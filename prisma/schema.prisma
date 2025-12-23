@@ -1,0 +1,106 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. DATA MASTER (User & Kategori)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   @default("STAFF") // "OWNER", "ADMIN_GUDANG", "STAFF"
+  createdAt DateTime @default(now())
+}
+
+// 2. BAHAN BAKU (Khusus Pabrik Shuttlecock)
+model RawMaterial {
+  id        String   @id @default(uuid())
+  name      String   // Contoh: "Bulu Angsa Grade A", "Gabus Import"
+  unit      String   // "Helai", "Pcs", "Kg"
+  stock     Int      @default(0)
+  minStock  Int      @default(100) // Alert jika stok tipis
+  
+  // Relasi: Bahan ini dipakai di Resep apa saja?
+  recipes   RecipeItem[]
+}
+
+// 3. PRODUK UTAMA (Induk)
+model Product {
+  id          String   @id @default(uuid())
+  name        String   // "Shuttlecock Gold", "Sepatu Smash V1"
+  type        String   // "MANUFACTURED" (Kok) atau "RETAIL" (Sepatu)
+  description String?
+  basePrice   Int      // Harga dasar
+  
+  // Relasi
+  variants    ProductVariant[]
+  recipe      Recipe[] // Jika ini Shuttlecock, dia punya resep
+
+  orderItems  OrderItem[]
+}
+
+// 4. VARIAN PRODUK (SKU Sebenarnya)
+// Untuk Sepatu: Variant beda Size/Warna.
+// Untuk Shuttlecock: Biasanya cuma 1 Varian per Produk (Default).
+model ProductVariant {
+  id        String  @id @default(uuid())
+  sku       String  @unique // "SHOE-RED-42"
+  size      String? // "40", "41", "42" (Null jika Shuttlecock)
+  color     String? // "Red", "Blue"
+  stock     Int     @default(0)
+  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+// 5. RESEP PRODUKSI (Bill of Materials)
+// Logic: 1 Slop Shuttlecock butuh apa saja?
+model Recipe {
+  id          String       @id @default(uuid())
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id])
+  
+  materials   RecipeItem[] // Daftar bahan bakunya
+}
+
+// Detail Resep (Pivot Table)
+model RecipeItem {
+  id            String      @id @default(uuid())
+  recipeId      String
+  recipe        Recipe      @relation(fields: [recipeId], references: [id])
+  
+  materialId    String
+  material      RawMaterial @relation(fields: [materialId], references: [id])
+  
+  quantityNeeded Int      // Misal: 16 (helai bulu)
+}
+
+// 6. RIWAYAT PENJUALAN (Order Masuk)
+model Order {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  totalPrice  Int         // Total belanja
+  customer    String?     // Nama pembeli (opsional)
+  status      String      @default("COMPLETED") // "PENDING", "COMPLETED"
+  
+  items       OrderItem[] // Apa saja yang dibeli?
+}
+
+// Detail barang yang dibeli
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  
+  quantity    Int
+  priceAtBuy  Int      // Harga saat beli (takutnya harga produk berubah nanti)
+}
